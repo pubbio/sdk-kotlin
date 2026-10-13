@@ -205,7 +205,7 @@ class Pubb internal constructor(
             require(host.startsWith("wss://") || host.startsWith("ws://")) { "wsHost must use ws:// or wss://" }
             val httpHost = host.replaceFirst("wss://", "https://").replaceFirst("ws://", "http://").toHttpUrl()
             require(httpHost.username.isEmpty() && httpHost.password.isEmpty()) { "wsHost cannot contain credentials" }
-            val url = httpHost.newBuilder().encodedPath("/socket").query(null).fragment(null).addQueryParameter("appKey", key).build()
+            val url = httpHost.newBuilder().encodedPath("/socket").query(null).fragment(null).addQueryParameter("appKey", key).addQueryParameter("protocol", "2").build()
             return Request.Builder().url(url).build()
         }
     }

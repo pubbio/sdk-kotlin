@@ -52,6 +52,7 @@ class PubbTest {
             val socket = fixture.factory.sockets.single()
             assertEquals("key&? /ç", socket.request().url.queryParameter("appKey"))
             assertEquals("/socket", socket.request().url.encodedPath)
+            assertEquals("2", socket.request().url.queryParameter("protocol"))
             socket.handshake(); until { socket.sent.size == 1 }
             assertEquals(JsonPrimitive("subscribe"), socket.sent[0]["action"])
             socket.receive("""{"channel":"other","data":{"name":"message.sent","data":"ignore"}}""")
@@ -71,6 +72,24 @@ class PubbTest {
             socket.handshake(); until { socket.sent.isNotEmpty() }
             assertEquals(JsonPrimitive("key:signature"), socket.sent[0]["auth"])
             socket.receive("""{"event":"pusher_internal:subscription_succeeded","channel":"presence-room","data":{"presence":{"hash":{"a":{"name":"Ada"}},"ids":["a"],"count":1}}}""")
+            until { room.members.value.size == 1 }
+            socket.receive("""{"event":"pubb:member_added","channel":"presence-room","data":"{\"user_id\":\"b\",\"user_info\":{}}"}""")
+            until { room.members.value.size == 2 }
+            socket.receive("""{"event":"pusher_internal:member_removed","channel":"presence-room","data":{"user_id":"a"}}""")
+            until { room.members.value.keys == setOf("b") }
+            fixture.pubb.disconnect()
+            assertTrue(room.members.value.isEmpty())
+        }
+    }
+
+    @Test fun `presence accepts native subscription and native member events`() = runBlocking {
+        Fixture(ChannelAuthorizer { _, _ -> ChannelAuthorization("key:signature", "{\"user_id\":\"a\"}") }).use { fixture ->
+            val room = fixture.pubb.subscribe("presence-room")
+            fixture.pubb.connect()
+            val socket = fixture.factory.sockets.single()
+            socket.handshake(); until { socket.sent.isNotEmpty() }
+            assertEquals(JsonPrimitive("key:signature"), socket.sent[0]["auth"])
+            socket.receive("""{"event":"pubb:subscription_succeeded","channel":"presence-room","data":{"presence":{"hash":{"a":{"name":"Ada"}},"ids":["a"],"count":1}}}""")
             until { room.members.value.size == 1 }
             socket.receive("""{"event":"pubb:member_added","channel":"presence-room","data":"{\"user_id\":\"b\",\"user_info\":{}}"}""")
             until { room.members.value.size == 2 }
@@ -184,7 +203,7 @@ class PubbTest {
             val received = async(start = CoroutineStart.UNDISPATCHED) { channel.events.first { it.name == "message.sent" } }
             pubb.connect()
             assertEquals(JsonPrimitive("over websocket"), withTimeout(5000) { received.await() }.data.jsonObject["message"])
-            assertEquals("/socket?appKey=public-key", server.takeRequest(3, TimeUnit.SECONDS)?.path)
+            assertEquals("/socket?appKey=public-key&protocol=2", server.takeRequest(3, TimeUnit.SECONDS)?.path)
             pubb.disconnect()
         } finally { pubb.close(); dispose(http); server.close() }
     }
